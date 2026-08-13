@@ -24,9 +24,7 @@ if (fs.existsSync(commandsPath)) {
 
     for (const file of files) {
         try {
-            const command = require(
-                path.join(commandsPath, file)
-            )
+            const command = require(path.join(commandsPath, file))
 
             if (
                 command.name &&
@@ -37,13 +35,11 @@ if (fs.existsSync(commandsPath)) {
                     command
                 )
 
-                console.log(
-                    `✅ Loaded command: ${command.name}`
-                )
+                console.log("Loaded command: " + command.name)
             }
         } catch (error) {
             console.error(
-                `❌ Failed to load ${file}:`,
+                "Failed to load " + file + ":",
                 error.message
             )
         }
@@ -61,21 +57,15 @@ async function startBot() {
 
         const sock = makeWASocket({
             auth: state,
-            logger: P({
-                level: "silent"
-            }),
+            logger: P({ level: "silent" }),
             browser: [
                 "BUG-BOT",
                 "Chrome",
                 "1.0.0"
-            ],
-            generateHighQualityLinkPreview: false
+            ]
         })
 
-        sock.ev.on(
-            "creds.update",
-            saveCreds
-        )
+        sock.ev.on("creds.update", saveCreds)
 
         let pairingRequested = false
 
@@ -85,14 +75,14 @@ async function startBot() {
 
         sock.ev.on(
             "connection.update",
-            async update => {
+            async (update) => {
                 const {
                     connection,
                     lastDisconnect
                 } = update
 
                 // ===============================
-                // REQUEST PAIRING CODE
+                // PAIRING CODE
                 // ===============================
 
                 if (
@@ -110,14 +100,14 @@ async function startBot() {
                         phoneNumber.length < 8
                     ) {
                         console.log(
-                            "❌ Invalid owner number in settings.js"
+                            "Invalid owner number in settings.js"
                         )
                         return
                     }
 
                     try {
                         console.log(
-                            "\n📱 Requesting WhatsApp pairing code...\n"
+                            "Requesting WhatsApp pairing code..."
                         )
 
                         const code =
@@ -125,20 +115,211 @@ async function startBot() {
                                 phoneNumber
                             )
 
-                        console.log(`
-╔══════════════════════════════════╗
-║        🤖 BUG-BOT PAIRING        ║
-╠══════════════════════════════════╣
-║                                  ║
-║      🔐 CODE: ${code}
-║                                  ║
-║ WhatsApp → Settings              ║
-║ → Linked Devices                 ║
-║ → Link a Device                  ║
-║ → Link with phone number         ║
-║                                  ║
-╚══════════════════════════════════╝
-`)
+                        console.log(
+                            "\n=============================="
+                        )
+
+                        console.log(
+                            "BUG-BOT PAIRING CODE"
+                        )
+
+                        console.log(
+                            "CODE: " + code
+                        )
+
+                        console.log(
+                            "==============================\n"
+                        )
+
                     } catch (error) {
                         console.error(
-                            "❌ Pairing Code Error
+                            "Pairing Code Error:",
+                            error.message
+                        )
+
+                        pairingRequested = false
+                    }
+                }
+
+                // ===============================
+                // CONNECTED
+                // ===============================
+
+                if (connection === "open") {
+                    console.log(
+                        "\n=============================="
+                    )
+
+                    console.log(
+                        "BUG-BOT SUCCESSFULLY CONNECTED"
+                    )
+
+                    console.log(
+                        "Version: " +
+                        global.botVersion
+                    )
+
+                    console.log(
+                        "Owner: " +
+                        global.owner
+                    )
+
+                    console.log(
+                        "Prefix: " +
+                        global.prefix
+                    )
+
+                    console.log(
+                        "==============================\n"
+                    )
+                }
+
+                // ===============================
+                // CLOSED
+                // ===============================
+
+                if (connection === "close") {
+                    const statusCode =
+                        lastDisconnect
+                            ?.error
+                            ?.output
+                            ?.statusCode
+
+                    const reconnect =
+                        statusCode !==
+                        DisconnectReason.loggedOut
+
+                    console.log(
+                        "Connection closed."
+                    )
+
+                    if (reconnect) {
+                        console.log(
+                            "Reconnecting in 5 seconds..."
+                        )
+
+                        setTimeout(
+                            startBot,
+                            5000
+                        )
+                    } else {
+                        console.log(
+                            "WhatsApp session logged out."
+                        )
+                    }
+                }
+            }
+        )
+
+        // ===============================
+        // MESSAGE HANDLER
+        // ===============================
+
+        sock.ev.on(
+            "messages.upsert",
+            async ({ messages }) => {
+                try {
+                    const msg = messages[0]
+
+                    if (
+                        !msg ||
+                        !msg.message
+                    ) {
+                        return
+                    }
+
+                    if (msg.key.fromMe) {
+                        return
+                    }
+
+                    const jid =
+                        msg.key.remoteJid
+
+                    const text =
+                        msg.message.conversation ||
+                        msg.message
+                            .extendedTextMessage
+                            ?.text ||
+                        ""
+
+                    if (
+                        !text.startsWith(
+                            global.prefix
+                        )
+                    ) {
+                        return
+                    }
+
+                    const body =
+                        text
+                            .slice(
+                                global.prefix.length
+                            )
+                            .trim()
+
+                    if (!body) {
+                        return
+                    }
+
+                    const args =
+                        body.split(/\s+/)
+
+                    const commandName =
+                        args
+                            .shift()
+                            .toLowerCase()
+
+                    const command =
+                        commands.get(
+                            commandName
+                        )
+
+                    if (!command) {
+                        return
+                    }
+
+                    await command.execute(
+                        sock,
+                        msg,
+                        args
+                    )
+
+                } catch (error) {
+                    console.error(
+                        "Message Error:",
+                        error
+                    )
+                }
+            }
+        )
+
+    } catch (error) {
+        console.error(
+            "Start Error:",
+            error
+        )
+
+        setTimeout(
+            startBot,
+            5000
+        )
+    }
+}
+
+// ===============================
+// START
+// ===============================
+
+console.log(
+    "=============================="
+)
+
+console.log(
+    "BUG-BOT Starting..."
+)
+
+console.log(
+    "=============================="
+)
+
+startBot()
