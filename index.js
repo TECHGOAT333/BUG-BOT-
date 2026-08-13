@@ -8,7 +8,6 @@ const {
 } = require("@whiskeysockets/baileys")
 
 const P = require("pino")
-const qrcode = require("qrcode-terminal")
 const fs = require("fs")
 const path = require("path")
 
@@ -28,12 +27,24 @@ if (fs.existsSync(commandsPath)) {
         try {
             const command = require(path.join(commandsPath, file))
 
-            if (command.name && typeof command.execute === "function") {
-                commands.set(command.name.toLowerCase(), command)
-                console.log(`✅ Loaded command: ${command.name}`)
+            if (
+                command.name &&
+                typeof command.execute === "function"
+            ) {
+                commands.set(
+                    command.name.toLowerCase(),
+                    command
+                )
+
+                console.log(
+                    `✅ Loaded command: ${command.name}`
+                )
             }
         } catch (error) {
-            console.error(`❌ Failed to load ${file}:`, error.message)
+            console.error(
+                `❌ Failed to load ${file}:`,
+                error.message
+            )
         }
     }
 }
@@ -54,28 +65,79 @@ async function startBot() {
             version,
             auth: state,
             logger: P({ level: "silent" }),
-            printQRInTerminal: false,
-            browser: ["BUG-BOT", "Chrome", "1.0.0"]
+            browser: [
+                "BUG-BOT",
+                "Chrome",
+                "1.0.0"
+            ]
         })
 
-        sock.ev.on("creds.update", saveCreds)
+        sock.ev.on(
+            "creds.update",
+            saveCreds
+        )
 
-        sock.ev.on("connection.update", update => {
-            const {
-                connection,
-                lastDisconnect,
-                qr
-            } = update
+        // ===============================
+        // PAIRING CODE
+        // ===============================
 
-            if (qr) {
-                console.log("\n📱 SCAN QR CODE\n")
-                qrcode.generate(qr, {
-                    small: true
-                })
+        if (
+            !sock.authState?.creds?.registered
+        ) {
+            const phoneNumber =
+                global.owner.replace(/\D/g, "")
+
+            if (!phoneNumber) {
+                console.log(
+                    "❌ Mete yon nimewo valab nan settings.js"
+                )
+                return
             }
 
-            if (connection === "open") {
+            console.log(
+                "\n📱 Requesting WhatsApp pairing code...\n"
+            )
+
+            try {
+                const code =
+                    await sock.requestPairingCode(
+                        phoneNumber
+                    )
+
                 console.log(`
+╔══════════════════════════════════╗
+║          BUG-BOT PAIRING         ║
+╠══════════════════════════════════╣
+║                                  ║
+║       🔐 CODE: ${code}            ║
+║                                  ║
+║ WhatsApp → Linked Devices        ║
+║ → Link a device → Link with code ║
+║                                  ║
+╚══════════════════════════════════╝
+`)
+            } catch (error) {
+                console.error(
+                    "❌ Pairing Code Error:",
+                    error.message
+                )
+            }
+        }
+
+        // ===============================
+        // CONNECTION
+        // ===============================
+
+        sock.ev.on(
+            "connection.update",
+            update => {
+                const {
+                    connection,
+                    lastDisconnect
+                } = update
+
+                if (connection === "open") {
+                    console.log(`
 ╔══════════════════════════════╗
 ║          BUG-BOT             ║
 ║       Successfully ON        ║
@@ -85,74 +147,112 @@ async function startBot() {
 ║ Prefix  : ${global.prefix}
 ╚══════════════════════════════╝
 `)
-            }
+                }
 
-            if (connection === "close") {
-                const statusCode =
-                    lastDisconnect?.error?.output?.statusCode
+                if (connection === "close") {
+                    const statusCode =
+                        lastDisconnect
+                            ?.error
+                            ?.output
+                            ?.statusCode
 
-                const reconnect =
-                    statusCode !== DisconnectReason.loggedOut
+                    const reconnect =
+                        statusCode !==
+                        DisconnectReason.loggedOut
 
-                console.log("❌ Connection closed.")
+                    console.log(
+                        "❌ Connection closed."
+                    )
 
-                if (reconnect) {
-                    console.log("🔄 Reconnecting...")
-                    setTimeout(startBot, 3000)
-                } else {
-                    console.log("⚠️ Session logged out.")
+                    if (reconnect) {
+                        console.log(
+                            "🔄 Reconnecting in 3 seconds..."
+                        )
+
+                        setTimeout(
+                            startBot,
+                            3000
+                        )
+                    } else {
+                        console.log(
+                            "⚠️ WhatsApp session logged out."
+                        )
+                    }
                 }
             }
-        })
+        )
 
         // ===============================
         // MESSAGE HANDLER
         // ===============================
 
-        sock.ev.on("messages.upsert", async ({ messages }) => {
-            try {
-                const msg = messages[0]
+        sock.ev.on(
+            "messages.upsert",
+            async ({ messages }) => {
+                try {
+                    const msg = messages[0]
 
-                if (!msg || !msg.message) return
-                if (msg.key.fromMe) return
+                    if (
+                        !msg ||
+                        !msg.message
+                    ) return
 
-                const jid = msg.key.remoteJid
+                    if (msg.key.fromMe) return
 
-                const text =
-                    msg.message.conversation ||
-                    msg.message.extendedTextMessage?.text ||
-                    ""
+                    const jid =
+                        msg.key.remoteJid
 
-                if (!text.startsWith(global.prefix)) return
+                    const text =
+                        msg.message.conversation ||
+                        msg.message
+                            .extendedTextMessage
+                            ?.text ||
+                        ""
 
-                const body = text
-                    .slice(global.prefix.length)
-                    .trim()
+                    if (
+                        !text.startsWith(
+                            global.prefix
+                        )
+                    ) return
 
-                if (!body) return
+                    const body =
+                        text
+                            .slice(
+                                global.prefix.length
+                            )
+                            .trim()
 
-                const args = body.split(/\s+/)
-                const commandName =
-                    args.shift().toLowerCase()
+                    if (!body) return
 
-                const command =
-                    commands.get(commandName)
+                    const args =
+                        body.split(/\s+/)
 
-                if (!command) return
+                    const commandName =
+                        args
+                            .shift()
+                            .toLowerCase()
 
-                await command.execute(
-                    sock,
-                    msg,
-                    args
-                )
+                    const command =
+                        commands.get(
+                            commandName
+                        )
 
-            } catch (error) {
-                console.error(
-                    "❌ Message Error:",
-                    error
-                )
+                    if (!command) return
+
+                    await command.execute(
+                        sock,
+                        msg,
+                        args
+                    )
+
+                } catch (error) {
+                    console.error(
+                        "❌ Message Error:",
+                        error
+                    )
+                }
             }
-        })
+        )
 
     } catch (error) {
         console.error(
@@ -160,7 +260,10 @@ async function startBot() {
             error
         )
 
-        setTimeout(startBot, 5000)
+        setTimeout(
+            startBot,
+            5000
+        )
     }
 }
 
