@@ -7,9 +7,8 @@ global.botVersion = "3.0.0"
 
 global.prefix = "."
 
-// Mete nimewo owner la san +
-// Egzanp: 509XXXXXXXX
-global.owner = "50938531109"
+// Nimewo a ap antre dirèkteman nan panel la
+global.owner = ""
 
 global.ownerName = "DRAGON COMODO"
 
@@ -35,4 +34,5 @@ module.exports = {
     language: global.language,
     mode: global.mode,
     sessionName: global.sessionName
+}    sessionName: global.sessionName
 }
