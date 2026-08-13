@@ -9,7 +9,7 @@ global.prefix = "."
 
 // Mete nimewo owner la san +
 // Egzanp: 509XXXXXXXX
-global.owner = "509XXXXXXXX"
+global.owner = "50938531109"
 
 global.ownerName = "DRAGON COMODO"
 
