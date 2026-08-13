@@ -34,5 +34,4 @@ module.exports = {
     language: global.language,
     mode: global.mode,
     sessionName: global.sessionName
-}    sessionName: global.sessionName
 }
