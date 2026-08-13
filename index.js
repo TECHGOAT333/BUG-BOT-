@@ -3,8 +3,7 @@ require("./settings")
 const {
     default: makeWASocket,
     useMultiFileAuthState,
-    DisconnectReason,
-    fetchLatestBaileysVersion
+    DisconnectReason
 } = require("@whiskeysockets/baileys")
 
 const P = require("pino")
@@ -25,7 +24,9 @@ if (fs.existsSync(commandsPath)) {
 
     for (const file of files) {
         try {
-            const command = require(path.join(commandsPath, file))
+            const command = require(
+                path.join(commandsPath, file)
+            )
 
             if (
                 command.name &&
@@ -58,18 +59,17 @@ async function startBot() {
         const { state, saveCreds } =
             await useMultiFileAuthState("./auth")
 
-        const { version } =
-            await fetchLatestBaileysVersion()
-
         const sock = makeWASocket({
-            version,
             auth: state,
-            logger: P({ level: "silent" }),
+            logger: P({
+                level: "silent"
+            }),
             browser: [
                 "BUG-BOT",
                 "Chrome",
                 "1.0.0"
-            ]
+            ],
+            generateHighQualityLinkPreview: false
         })
 
         sock.ev.on(
@@ -77,52 +77,7 @@ async function startBot() {
             saveCreds
         )
 
-        // ===============================
-        // PAIRING CODE
-        // ===============================
-
-        if (
-            !sock.authState?.creds?.registered
-        ) {
-            const phoneNumber =
-                global.owner.replace(/\D/g, "")
-
-            if (!phoneNumber) {
-                console.log(
-                    "❌ Mete yon nimewo valab nan settings.js"
-                )
-                return
-            }
-
-            console.log(
-                "\n📱 Requesting WhatsApp pairing code...\n"
-            )
-
-            try {
-                const code =
-                    await sock.requestPairingCode(
-                        phoneNumber
-                    )
-
-                console.log(`
-╔══════════════════════════════════╗
-║          BUG-BOT PAIRING         ║
-╠══════════════════════════════════╣
-║                                  ║
-║       🔐 CODE: ${code}            ║
-║                                  ║
-║ WhatsApp → Linked Devices        ║
-║ → Link a device → Link with code ║
-║                                  ║
-╚══════════════════════════════════╝
-`)
-            } catch (error) {
-                console.error(
-                    "❌ Pairing Code Error:",
-                    error.message
-                )
-            }
-        }
+        let pairingRequested = false
 
         // ===============================
         // CONNECTION
@@ -130,152 +85,60 @@ async function startBot() {
 
         sock.ev.on(
             "connection.update",
-            update => {
+            async update => {
                 const {
                     connection,
                     lastDisconnect
                 } = update
 
-                if (connection === "open") {
-                    console.log(`
-╔══════════════════════════════╗
-║          BUG-BOT             ║
-║       Successfully ON        ║
-╠══════════════════════════════╣
-║ Version : ${global.botVersion}
-║ Owner   : ${global.owner}
-║ Prefix  : ${global.prefix}
-╚══════════════════════════════╝
-`)
-                }
+                // ===============================
+                // REQUEST PAIRING CODE
+                // ===============================
 
-                if (connection === "close") {
-                    const statusCode =
-                        lastDisconnect
-                            ?.error
-                            ?.output
-                            ?.statusCode
+                if (
+                    !pairingRequested &&
+                    !state.creds.registered
+                ) {
+                    pairingRequested = true
 
-                    const reconnect =
-                        statusCode !==
-                        DisconnectReason.loggedOut
+                    const phoneNumber =
+                        String(global.owner)
+                            .replace(/\D/g, "")
 
-                    console.log(
-                        "❌ Connection closed."
-                    )
-
-                    if (reconnect) {
+                    if (
+                        !phoneNumber ||
+                        phoneNumber.length < 8
+                    ) {
                         console.log(
-                            "🔄 Reconnecting in 3 seconds..."
+                            "❌ Invalid owner number in settings.js"
                         )
-
-                        setTimeout(
-                            startBot,
-                            3000
-                        )
-                    } else {
-                        console.log(
-                            "⚠️ WhatsApp session logged out."
-                        )
+                        return
                     }
-                }
-            }
-        )
 
-        // ===============================
-        // MESSAGE HANDLER
-        // ===============================
-
-        sock.ev.on(
-            "messages.upsert",
-            async ({ messages }) => {
-                try {
-                    const msg = messages[0]
-
-                    if (
-                        !msg ||
-                        !msg.message
-                    ) return
-
-                    if (msg.key.fromMe) return
-
-                    const jid =
-                        msg.key.remoteJid
-
-                    const text =
-                        msg.message.conversation ||
-                        msg.message
-                            .extendedTextMessage
-                            ?.text ||
-                        ""
-
-                    if (
-                        !text.startsWith(
-                            global.prefix
+                    try {
+                        console.log(
+                            "\n📱 Requesting WhatsApp pairing code...\n"
                         )
-                    ) return
 
-                    const body =
-                        text
-                            .slice(
-                                global.prefix.length
+                        const code =
+                            await sock.requestPairingCode(
+                                phoneNumber
                             )
-                            .trim()
 
-                    if (!body) return
-
-                    const args =
-                        body.split(/\s+/)
-
-                    const commandName =
-                        args
-                            .shift()
-                            .toLowerCase()
-
-                    const command =
-                        commands.get(
-                            commandName
-                        )
-
-                    if (!command) return
-
-                    await command.execute(
-                        sock,
-                        msg,
-                        args
-                    )
-
-                } catch (error) {
-                    console.error(
-                        "❌ Message Error:",
-                        error
-                    )
-                }
-            }
-        )
-
-    } catch (error) {
-        console.error(
-            "❌ Start Error:",
-            error
-        )
-
-        setTimeout(
-            startBot,
-            5000
-        )
-    }
-}
-
-// ===============================
-// START
-// ===============================
-
-console.log(`
-╔══════════════════════════════╗
-║          BUG-BOT             ║
-║       Starting Bot...        ║
-╚══════════════════════════════╝
+                        console.log(`
+╔══════════════════════════════════╗
+║        🤖 BUG-BOT PAIRING        ║
+╠══════════════════════════════════╣
+║                                  ║
+║      🔐 CODE: ${code}
+║                                  ║
+║ WhatsApp → Settings              ║
+║ → Linked Devices                 ║
+║ → Link a Device                  ║
+║ → Link with phone number         ║
+║                                  ║
+╚══════════════════════════════════╝
 `)
-
-startBot()
+                    } catch (error) {
+                        console.error(
+                            "❌ Pairing Code Error
